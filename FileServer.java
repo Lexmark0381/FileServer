@@ -21,7 +21,7 @@ class MainLoop implements Runnable {
 
             while (true) {
                 try {
-                    //  INIT SERVER SOCKETS
+                    //  INIT SERVER SOCKET
                     connection = server_port.accept();
                     String ClientId = connection.getInetAddress().toString().substring(1, connection.getInetAddress().toString().length());
 
@@ -31,17 +31,14 @@ class MainLoop implements Runnable {
                     inR = new InputStreamReader(input);
 
                     output = connection.getOutputStream();
-                    ouR = new OutputStreamWriter(output);
 
                     br = new BufferedReader(inR);
-
 
                     char[] buff = new char[100];
 
                     //  INIT SERVER VARIABLES
                     String command = "";
                     int n;
-                    int data = 0;
                     File f = null;
 
 
@@ -58,7 +55,7 @@ class MainLoop implements Runnable {
                     System.out.println(ClientId + " : " + command);
                     ArrayList<String> argv = new ArrayList<String>(10);
 
-                    for (int i = 0; i < ArrayOfCommands.length; i++) {
+                    for (int i = 0; i < command.split(" ").length; i++) {
                         argv.add(i, ArrayOfCommands[i]);
                     }
 
@@ -70,70 +67,51 @@ class MainLoop implements Runnable {
 //                              RECEIVING FILE!
                                 System.out.println("File Incoming!");
                                 String FileName = argv.get(1);
-                                int FileSize = Integer.parseInt(argv.get(2));
+                                String FileSize = argv.get(2);
                                 System.out.println(FileName + " incoming! It's "+ FileSize + " bytes long!");
 
                                 sendToClient("OK\n", output);
-                                output.flush();
+//                                output.flush();
                                 System.out.println("Receiving "+ FileName);
 
-
-//                                System.out.println("Opened DataInputStream");
                                 FileOutputStream fos = new FileOutputStream(MonitorDirectory + "/" +FileName);
-                                System.out.println("Opened FileOutputStream");
-//                                char[] buffer = new char[4096];
-                                System.out.println("Created buffer");
 
                                 byte[] block = new byte[4096];
                                 int size;
 
                                 while ((size = input.read(block)) > 0) {
-//                                    System.out.println("'" + size + "'");
                                     fos.write(block, 0, size);
                                 }
 
                                 fos.flush();
                                 fos.close();
-                                br.close();
 
                                 System.out.println(FileName + " received!");
                             } else {
 
 //                              SENDING FILE!
                                 File file = new File(argv.get(2));
-                                System.out.println("Checking file correctness...");
                                 if (!(isThereFile(file)) || file.isDirectory()) {
-
-                                    System.out.println(file.getName() + " doesn't exist or is a Directory!");
-                                    sendToClient(argv.get(1) + " : " + file.getName() + " doesn't exist or is a Directory!", output);
+                                    String ErrorMessage = argv.get(1) + " : " + file.getName() + " doesn't exist or is a Directory!\n";
+                                    sendToClient(ErrorMessage, output);
+                                    System.out.println(ErrorMessage);
+                                    output.flush();
+                                    connection.close();
                                     continue;
                                 }
+//                              THE FILE IS OKAY, CONTINUE!
                                 System.out.println("File OK!");
 
+                                sendToClient("File OK!\n", output);
+                                output.flush();
 //                                }
-                                System.out.println("Retrieving targets...");
+
                                 ArrayList<String> Targets = new ArrayList<String>();
                                 for (int i = 3; i < argv.size(); i++) {
                                     Targets.add(argv.get(i));
                                 }
-                                System.out.println("Targets retrieved!");
-                                System.out.println("Knocking...");
-                                for (String target : Targets) {
-                                    try {
-                                        System.out.println("Knocking at " + target.split(":")[0] + ":" + Integer.parseInt(target.split(":")[1]));
-                                        Socket socket = new Socket(target.split(":")[0], Integer.parseInt(target.split(":")[1]));
-//                                        wait(2);
-                                        socket.close();
-                                        System.out.println(target + " is online!");
-                                    } catch (Exception ex) {
-                                        System.out.println("Couldn't knock! on  " + target + " : " + ex);
-                                    }
-                                }
-                                System.out.println("Targets are online!");
-
-
-
-
+                                sendToClient("Beginning to send...",output);
+                                int JobsDone = 0;
                                 for (String target : Targets) {
                                     Socket TargetConnection = new Socket(target.split(":")[0], Integer.parseInt(target.split(":")[1]));
 //                                    System.out.println("created TargetConnection");
@@ -145,9 +123,9 @@ class MainLoop implements Runnable {
 //                                    System.out.println("created out");
                                     System.out.println("Preparing "+target+" to receive...");
                                     String CommandToSend = "copy " + file.getName() + " " + file.length();
-                                    System.out.println("Sending \'"+ CommandToSend + "\' to " + target);
+                                    System.out.println("Sending command \'"+ CommandToSend + "\' to " + target);
                                     out.println(CommandToSend);
-                                    System.out.println("Sent!");
+                                    System.out.println("Command sent!");
                                     out.flush();
 
                                     BufferedReader reader = new BufferedReader(new InputStreamReader(TargetInput));
@@ -156,14 +134,14 @@ class MainLoop implements Runnable {
 //                                    while ((line = ) != null) {
 //                                        response += line;
 //                                    }
-                                    System.out.println("Received response: " + response);
                                     if(!response.equals("OK")){
                                         System.out.println("Invalid Response: Received: " + response);
-                                        break;
+                                        continue;
                                     }
                                     System.out.println("Response OK received");
 
                                     // begin file sending..
+                                    System.out.println("Sending "+ file + " to "+ target);
                                     DataOutputStream dos = new DataOutputStream(TargetConnection.getOutputStream());
                                     FileInputStream fis = new FileInputStream(file);
 
@@ -184,25 +162,25 @@ class MainLoop implements Runnable {
                                     TargetConnection.close();
 
                                     System.out.println("File sent to " + target);
+                                    JobsDone ++;
+                                    sendToClient(target + " : " + file + " received!\n", output );
                                 }
-                                System.out.println("File sent to all the targets!");
-                                sendToClient("Job Done!", output);
+
+                                    System.out.println("File sent to "+ JobsDone + " targets!");
+                                    sendToClient("Job Done!\n", output);
+
 
 
                             }
                         }
                         if (argv.get(0).equals("list")) {
-
-                            f = MonitorDirectory;
-                            File[] files = f.listFiles();
+                            File[] files = MonitorDirectory.listFiles();
                             try {
                                 printFilesInDirectory(files, 0, output);
                             } catch (Exception e) {
                                 System.out.println("Error while listing: " + e);
                             }
-                            output.close();
-                            ouR.close();
-
+                            output.flush();
                         }
                     }
                     if (!(argv.get(0).equals("list") || argv.get(0).equals("copy"))) {
@@ -263,30 +241,36 @@ class MainLoop implements Runnable {
 }
 class FileServer {
     public static void main(String [] args) throws Exception{
-        int PortNumber = 0;
-        File MonitorDirectory = null;
+        int PortNumber = 9999;
+        String MonitorDirectory = ".";
         java.net.ServerSocket server_port;
-        if(args.length == 0){
-            PortNumber = 9999;
-            MonitorDirectory = new File(".");
-        }
+      if(args.length > 2){
+          System.out.println("USAGE: java FileServer PARAMS\nPARAMS: Port number, Monitor Directory or both.");
+          System.exit(1);
+      }
         if(args.length == 1){
-            PortNumber = Integer.valueOf(args[0]) ;
-            MonitorDirectory = new File(".");
+            try{
+                PortNumber = Integer.parseInt(args[0]);
+            }
+            catch (Exception ex){
+                MonitorDirectory = args[0];
+            }
         }
         if(args.length == 2){
-            PortNumber = Integer.valueOf(args[0]) ;
-            File Root = new File(".");
-
-            File f = new File(args[1]);
-
-            if (f.exists()){
-                MonitorDirectory = new File(args[1]);
-            } else {
-                System.out.println("'" + args[1] + "' doesn't exist.");
-                System.exit(1);
+            try{
+                PortNumber = Integer.parseInt(args[0]);
+                MonitorDirectory = args[1];
+            } catch (Exception ex){
+                PortNumber = Integer.parseInt(args[1]);
+                MonitorDirectory = args[0];
             }
 
+        }
+        try{
+            File f = new File(MonitorDirectory);
+        } catch (Exception ex){
+            System.out.println(MonitorDirectory + " doesn't exist. Using Default.");
+            MonitorDirectory = ".";
         }
 
         try{
@@ -296,10 +280,11 @@ class FileServer {
             System.exit(1);
             return;
         }
-        System.out.println("Server Running. Port number: "+ PortNumber + " Monitoring directory '" + MonitorDirectory.getCanonicalPath() + "'");
+        File FileMonitorDirectory = new  File(MonitorDirectory);
+        System.out.println("Server Running. Port number: "+ PortNumber + " Monitoring directory '" + FileMonitorDirectory.getCanonicalPath() + "'");
         Thread T[] = new Thread[10];
         for (int i = 0; i < 10; i++){
-            T[i] = new Thread(new MainLoop(server_port, MonitorDirectory));
+            T[i] = new Thread(new MainLoop(server_port, FileMonitorDirectory));
             T[i].start();
         }
         for (int i=0; i<10; i++){
